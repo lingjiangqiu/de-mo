@@ -1409,7 +1409,7 @@ body {
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.25);
   color: #1A1208;
   font-family: 'Noto Serif SC', serif;
-  /* 导出卡片用纯色背景(去掉噪点滤镜,html2canvas 才不会卡死) */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.3 0 0 0 0 0.22 0 0 0 0 0.12 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='400' height='400' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 .pdf-card-1 {
@@ -1433,7 +1433,8 @@ body {
 .pdf-card-2 {
   background-color: #ECDFC4;
   background-image:
-    repeating-linear-gradient(180deg, transparent 0px, transparent 36px, rgba(61, 47, 31, 0.06) 36px, rgba(61, 47, 31, 0.06) 37px);
+    repeating-linear-gradient(180deg, transparent 0px, transparent 36px, rgba(61, 47, 31, 0.06) 36px, rgba(61, 47, 31, 0.06) 37px),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.3 0 0 0 0 0.22 0 0 0 0 0.12 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='400' height='400' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 .pdf-card-2::before {
@@ -3005,7 +3006,8 @@ function buildPdfBrainDecoLayer(brain) {
 
 function buildPdfHTML(data) {
   const { topic, depth, brain, parsed, isWild, timestamp } = data;
-  const d = timestamp;
+  // 防御:timestamp 可能是 Date/字符串/数字/空(历史/分享加载时变字符串),统一转有效 Date
+  const d = (timestamp instanceof Date && !isNaN(timestamp)) ? timestamp : new Date(timestamp || Date.now());
   const months = ['JANUARY','FEBRUARY','MARCH','APRIL','MAY','JUNE','JULY','AUGUST','SEPTEMBER','OCTOBER','NOVEMBER','DECEMBER'];
   const dateStr = months[d.getMonth()] + ' ' + d.getDate().toString().padStart(2,'0') + ', ' + d.getFullYear();
   const timeStr = d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
@@ -3025,6 +3027,7 @@ function buildPdfHTML(data) {
   if (bookTitle || intro || warn || parsed.deep) {
     deepBlock =
       '<div class="pdf-card pdf-card-3">' +
+        '<div class="pdf-tear pdf-tear-top"></div>' +
         '<div class="pdf-card-header">' +
           '<div class="pdf-card-title"><span class="pdf-card-title-emoji">📚</span><span class="zh">沉读</span></div>' +
           '<div class="pdf-card-meta">Lectio · Deep Dive · No. 03</div>' +
@@ -3034,6 +3037,7 @@ function buildPdfHTML(data) {
         (intro ? '<div class="pdf-book-intro">' + escapeHtml(intro).replace(/\n/g, '<br>') + '</div>' : '') +
         (warn ? '<div class="pdf-book-warn"><b>但要小心:</b> ' + escapeHtml(warn).replace(/\n/g, '<br>') + '</div>' : '') +
         (!bookTitle && !intro && !warn ? '<div class="pdf-card-body">' + escapeHtml(parsed.deep).replace(/\n/g, '<br>') + '</div>' : '') +
+        '<div class="pdf-tear pdf-tear-bottom"></div>' +
       '</div>';
   }
 
@@ -3079,19 +3083,23 @@ function buildPdfHTML(data) {
     '<div class="pdf-divider">§</div>' +
 
     (parsed.friend ? '<div class="pdf-card pdf-card-1">' +
+      '<div class="pdf-tear pdf-tear-top"></div>' +
       '<div class="pdf-card-header">' +
         '<div class="pdf-card-title"><span class="pdf-card-title-emoji">🪶</span><span class="zh">碎念</span></div>' +
         '<div class="pdf-card-meta">Murmur · For the feed · No. 01</div>' +
       '</div>' +
       '<div class="pdf-card-body">' + escapeHtml(parsed.friend).replace(/\n/g, '<br>') + '</div>' +
+      '<div class="pdf-tear pdf-tear-bottom"></div>' +
     '</div>' : '') +
 
     (parsed.think ? '<div class="pdf-card pdf-card-2">' +
+      '<div class="pdf-tear pdf-tear-top"></div>' +
       '<div class="pdf-card-header">' +
         '<div class="pdf-card-title"><span class="pdf-card-title-emoji">🧠</span><span class="zh">思辨</span></div>' +
         '<div class="pdf-card-meta">Reflection · To think with · No. 02</div>' +
       '</div>' +
       '<div class="pdf-card-body">' + escapeHtml(parsed.think).replace(/\n/g, '<br>') + '</div>' +
+      '<div class="pdf-tear pdf-tear-bottom"></div>' +
     '</div>' : '') +
 
     deepBlock +
@@ -3116,50 +3124,43 @@ async function exportToPDF() {
   btn.disabled = true;
   btn.innerHTML = '<span class="ico">⏳</span><span>生成中 · 约 5 秒...</span>';
 
-  // Step 1: Create visible overlay so html2canvas can render properly
-  const overlay = document.createElement('div');
-  overlay.className = 'pdf-render-overlay';
-  overlay.innerHTML =
-    '<div class="render-status">🖼️ 正在生成图片...</div>' +
-    buildPdfHTML(lastTranslation);
-  document.body.appendChild(overlay);
-
-  const target = overlay.querySelector('#pdf-render-target');
-
-  // Filename
-  const safeTopic = lastTranslation.topic.replace(/[\\/:*?"<>|\s]/g, '_').slice(0, 30);
-  const d = lastTranslation.timestamp;
-  const dateTag = d.getFullYear() + (d.getMonth()+1).toString().padStart(2,'0') + d.getDate().toString().padStart(2,'0');
-  const filename = '日常哲学翻译_' + safeTopic + '_' + dateTag + '.png';
-
+  let overlay = null;
   try {
+    // Step 1: 创建渲染层(放进 try,万一 buildPdfHTML 抛错,finally 也能恢复按钮)
+    overlay = document.createElement('div');
+    overlay.className = 'pdf-render-overlay';
+    overlay.innerHTML =
+      '<div class="render-status">🖼️ 正在生成图片...</div>' +
+      buildPdfHTML(lastTranslation);
+    document.body.appendChild(overlay);
+
+    const target = overlay.querySelector('#pdf-render-target');
+    if (!target) throw new Error('渲染模板创建失败');
+
+    // 文件名(timestamp 同样防御转 Date,避免 d.getFullYear 报错)
+    const safeTopic = (lastTranslation.topic || '').replace(/[\\/:*?"<>|\s]/g, '_').slice(0, 30);
+    const ts = lastTranslation.timestamp;
+    const d = (ts instanceof Date && !isNaN(ts)) ? ts : new Date(ts || Date.now());
+    const dateTag = d.getFullYear() + (d.getMonth()+1).toString().padStart(2,'0') + d.getDate().toString().padStart(2,'0');
+    const filename = '日常哲学翻译_' + safeTopic + '_' + dateTag + '.png';
+
     console.log('[IMG] Waiting for fonts...');
     if (document.fonts && document.fonts.ready) {
       await document.fonts.ready;
     }
 
-    // Wait for the bg poster image to load (key for the new background system)
+    // 等背景海报图加载完
     const bgImg = target.querySelector('.pdf-bg-image');
-    if (bgImg) {
-      if (bgImg.complete && bgImg.naturalHeight !== 0) {
-        console.log('[IMG] Bg image already loaded');
-      } else {
-        console.log('[IMG] Waiting for bg image...');
-        await new Promise((resolve) => {
-          const done = () => resolve();
-          bgImg.addEventListener('load', done, { once: true });
-          bgImg.addEventListener('error', () => {
-            console.warn('[IMG] Bg image failed to load, continuing without it');
-            resolve();
-          }, { once: true });
-          // Safety timeout
-          setTimeout(done, 4000);
-        });
-      }
+    if (bgImg && !(bgImg.complete && bgImg.naturalHeight !== 0)) {
+      await new Promise((resolve) => {
+        bgImg.addEventListener('load', resolve, { once: true });
+        bgImg.addEventListener('error', resolve, { once: true });
+        setTimeout(resolve, 4000); // 安全超时
+      });
     }
 
-    // Extra delay for layout to settle and fonts to apply
-    await new Promise(r => setTimeout(r, 800));
+    // 等布局稳定
+    await new Promise(r => setTimeout(r, 500));
 
     console.log('[IMG] Target dimensions:', target.scrollWidth, 'x', target.scrollHeight);
     if (!target.scrollHeight || target.scrollHeight < 100) {
@@ -3213,7 +3214,7 @@ async function exportToPDF() {
     console.error('[IMG] Error:', err);
     alert('图片生成失败:' + err.message + '\n\n请按 F12 看 Console 错误信息,截图发给开发者。');
   } finally {
-    overlay.remove();
+    if (overlay) overlay.remove();
     btn.disabled = false;
     btn.innerHTML = originalText;
   }
