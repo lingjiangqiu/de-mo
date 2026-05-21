@@ -1409,7 +1409,7 @@ body {
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.25);
   color: #1A1208;
   font-family: 'Noto Serif SC', serif;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.3 0 0 0 0 0.22 0 0 0 0 0.12 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='400' height='400' filter='url(%23n)'/%3E%3C/svg%3E");
+  /* 导出卡片用纯色背景(去掉噪点滤镜,html2canvas 才不会卡死) */
 }
 
 .pdf-card-1 {
@@ -1433,8 +1433,7 @@ body {
 .pdf-card-2 {
   background-color: #ECDFC4;
   background-image:
-    repeating-linear-gradient(180deg, transparent 0px, transparent 36px, rgba(61, 47, 31, 0.06) 36px, rgba(61, 47, 31, 0.06) 37px),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.3 0 0 0 0 0.22 0 0 0 0 0.12 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='400' height='400' filter='url(%23n)'/%3E%3C/svg%3E");
+    repeating-linear-gradient(180deg, transparent 0px, transparent 36px, rgba(61, 47, 31, 0.06) 36px, rgba(61, 47, 31, 0.06) 37px);
 }
 
 .pdf-card-2::before {
@@ -3026,7 +3025,6 @@ function buildPdfHTML(data) {
   if (bookTitle || intro || warn || parsed.deep) {
     deepBlock =
       '<div class="pdf-card pdf-card-3">' +
-        '<div class="pdf-tear pdf-tear-top"></div>' +
         '<div class="pdf-card-header">' +
           '<div class="pdf-card-title"><span class="pdf-card-title-emoji">📚</span><span class="zh">沉读</span></div>' +
           '<div class="pdf-card-meta">Lectio · Deep Dive · No. 03</div>' +
@@ -3036,7 +3034,6 @@ function buildPdfHTML(data) {
         (intro ? '<div class="pdf-book-intro">' + escapeHtml(intro).replace(/\n/g, '<br>') + '</div>' : '') +
         (warn ? '<div class="pdf-book-warn"><b>但要小心:</b> ' + escapeHtml(warn).replace(/\n/g, '<br>') + '</div>' : '') +
         (!bookTitle && !intro && !warn ? '<div class="pdf-card-body">' + escapeHtml(parsed.deep).replace(/\n/g, '<br>') + '</div>' : '') +
-        '<div class="pdf-tear pdf-tear-bottom"></div>' +
       '</div>';
   }
 
@@ -3082,23 +3079,19 @@ function buildPdfHTML(data) {
     '<div class="pdf-divider">§</div>' +
 
     (parsed.friend ? '<div class="pdf-card pdf-card-1">' +
-      '<div class="pdf-tear pdf-tear-top"></div>' +
       '<div class="pdf-card-header">' +
         '<div class="pdf-card-title"><span class="pdf-card-title-emoji">🪶</span><span class="zh">碎念</span></div>' +
         '<div class="pdf-card-meta">Murmur · For the feed · No. 01</div>' +
       '</div>' +
       '<div class="pdf-card-body">' + escapeHtml(parsed.friend).replace(/\n/g, '<br>') + '</div>' +
-      '<div class="pdf-tear pdf-tear-bottom"></div>' +
     '</div>' : '') +
 
     (parsed.think ? '<div class="pdf-card pdf-card-2">' +
-      '<div class="pdf-tear pdf-tear-top"></div>' +
       '<div class="pdf-card-header">' +
         '<div class="pdf-card-title"><span class="pdf-card-title-emoji">🧠</span><span class="zh">思辨</span></div>' +
         '<div class="pdf-card-meta">Reflection · To think with · No. 02</div>' +
       '</div>' +
       '<div class="pdf-card-body">' + escapeHtml(parsed.think).replace(/\n/g, '<br>') + '</div>' +
-      '<div class="pdf-tear pdf-tear-bottom"></div>' +
     '</div>' : '') +
 
     deepBlock +
@@ -3174,45 +3167,17 @@ async function exportToPDF() {
     }
 
     console.log('[IMG] Starting html2canvas...');
-    // html2canvas can hang SYNCHRONOUSLY on complex SVG/CSS, so a JS timeout
-    // can't always save us. The real fix is to REMOVE the heavy bits before capture:
-    //   1. the brain-decoration layer (~13 inline SVGs)
-    //   2. all .pdf-tear elements (SVG data-URI backgrounds html2canvas can't render anyway)
-    const decoLayer = target.querySelector('.pdf-brain-decos');
-    if (decoLayer) decoLayer.remove();
-    target.querySelectorAll('.pdf-tear').forEach(el => el.remove());
-    // CRITICAL: feTurbulence SVG-filter noise backgrounds are the #1 cause of
-    // html2canvas hanging. Strip ALL of them (cards keep their flat paper color).
-    let stripped = 0;
-    target.querySelectorAll('*').forEach(el => {
-      const bg = el.style.backgroundImage || '';
-      const computed = (window.getComputedStyle(el).backgroundImage) || '';
-      if (bg.includes('feTurbulence') || computed.includes('feTurbulence') || bg.includes('svg') || computed.includes('data:image/svg')) {
-        el.style.backgroundImage = 'none';
-        stripped++;
-      }
+    const canvas = await html2canvas(target, {
+      scale: 1.5,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: '#14100A',
+      logging: false,
+      width: target.scrollWidth,
+      height: target.scrollHeight,
+      windowWidth: target.scrollWidth,
+      windowHeight: target.scrollHeight
     });
-    console.log('[IMG] Removed deco + tear + ' + stripped + ' noise textures, starting capture...');
-
-    const canvas = await Promise.race([
-      html2canvas(target, {
-        scale: 1.2,
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: '#14100A',
-        logging: false,
-        imageTimeout: 5000,
-        removeContainer: true,
-        width: target.scrollWidth,
-        height: target.scrollHeight,
-        windowWidth: target.scrollWidth,
-        windowHeight: target.scrollHeight
-      }),
-      new Promise((_, rej) =>
-        setTimeout(() => rej(new Error('CANVAS_TIMEOUT')), 12000)
-      )
-    ]);
-    console.log('[IMG] Canvas captured OK');
 
     console.log('[IMG] Canvas created:', canvas.width, 'x', canvas.height);
 
@@ -3239,25 +3204,7 @@ async function exportToPDF() {
 
   } catch (err) {
     console.error('[IMG] Error:', err);
-    if (err.message === 'CANVAS_TIMEOUT') {
-      const ok = confirm(
-        '图片生成超时了(背景元素太复杂)。\n\n改用浏览器打印对话框?\n' +
-        '(选"另存为 PDF"或"打印到 PDF")\n\n点确定打开打印界面。'
-      );
-      if (ok) {
-        // Brief print stylesheet
-        const printStyle = document.createElement('style');
-        printStyle.id = '_print_override';
-        printStyle.textContent =
-          '@media print { body > *:not(.container) { display:none!important; } ' +
-          '.bg-stage,.bg-scrim,.bg-grain,.deco-layer { display:none!important; } }';
-        document.head.appendChild(printStyle);
-        window.print();
-        setTimeout(() => { const s = document.getElementById('_print_override'); if (s) s.remove(); }, 2000);
-      }
-    } else {
-      alert('图片生成失败:' + err.message + '\n\n请按 F12 看 Console 错误信息。');
-    }
+    alert('图片生成失败:' + err.message + '\n\n请按 F12 看 Console 错误信息,截图发给开发者。');
   } finally {
     overlay.remove();
     btn.disabled = false;
