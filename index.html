@@ -3167,17 +3167,24 @@ async function exportToPDF() {
     }
 
     console.log('[IMG] Starting html2canvas...');
-    const canvas = await html2canvas(target, {
-      scale: 1.5,
-      useCORS: true,
-      allowTaint: true,
-      backgroundColor: '#14100A',
-      logging: false,
-      width: target.scrollWidth,
-      height: target.scrollHeight,
-      windowWidth: target.scrollWidth,
-      windowHeight: target.scrollHeight
-    });
+    // 超时兜底:万一 html2canvas 卡住,15 秒后报错而不是无限转圈
+    const canvas = await Promise.race([
+      html2canvas(target, {
+        scale: 1.5,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#14100A',
+        logging: false,
+        width: target.scrollWidth,
+        height: target.scrollHeight,
+        windowWidth: target.scrollWidth,
+        windowHeight: target.scrollHeight
+      }),
+      new Promise((_, reject) => setTimeout(
+        () => reject(new Error('生成超时(15秒)。可能是图片太大或浏览器不兼容,请换 Chrome 再试。')),
+        15000
+      ))
+    ]);
 
     console.log('[IMG] Canvas created:', canvas.width, 'x', canvas.height);
 
